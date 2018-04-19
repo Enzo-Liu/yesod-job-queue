@@ -98,7 +98,7 @@ class (Yesod master, Read (JobType master), Show (JobType master)
     type JobType master
 
     -- | Job Handler
-    runJob :: (MonadBaseControl IO m, MonadIO m)
+    runJob :: (MonadBaseControl IO m, MonadIO m, MonadUnliftIO m)
               => master -> JobType master -> ReaderT master m ()
 
     -- | connection info for redis
