@@ -1,3 +1,4 @@
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE ImpredicativeTypes #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -33,7 +34,7 @@ import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Control (MonadBaseControl)
 import Control.Monad.Trans.Reader (ReaderT, runReaderT)
-import Data.Aeson (Value, (.=), object)
+import Data.Aeson ((.=), object)
 import Data.Aeson.TH (defaultOptions, deriveToJSON)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as BSC
@@ -53,7 +54,9 @@ import Text.Read (readMaybe)
 import Yesod.Core
     (HandlerT, Html, Yesod, YesodSubDispatch(yesodSubDispatch), getYesod,
      hamlet, invalidArgs, mkYesodSubDispatch, notFound, requireJsonBody,
-     returnJson, sendResponse, toContent, withUrlRenderer)
+     returnJson, sendResponse, toContent, withUrlRenderer,
+     MonadHandler, HandlerSite, SubHandlerSite, MonadUnliftIO, Value, TypedContent
+     )
 import Yesod.Persist.Core (YesodPersistBackend)
 
 -- | Thread ID for convenience
@@ -206,16 +209,16 @@ jobQueueInfo m = JobQueueClassInfo "JobQueue" [threadInfo]
   where threadInfo = "Number of threads: " `T.append` (T.pack . show $ threadNumber m)
 
 
--- | Handler for job manager api routes
-type JobHandler master a =
-    YesodJobQueue master => HandlerT JobQueue (HandlerT master IO) a
+type MonadJobHandler master m = (MonadHandler m, YesodJobQueue master, master ~ HandlerSite m, JobQueue ~ SubHandlerSite m, MonadUnliftIO m)
+
+type JobHandler master a = forall m. MonadJobHandler master m => m a
 
 jobTypeProxy :: (YesodJobQueue m) => m -> Proxy (JobType m)
 jobTypeProxy _ = Proxy
 
 -- | get job definitions
 getJobR :: JobHandler master Value
-getJobR = lift $ do
+getJobR = do
     y <- getYesod
     let parseConstr (c:args) = object ["type" .= c, "args" .= args, "description" .= describeJob y c]
         constrs = map parseConstr $ genericConstructors $ jobTypeProxy y
@@ -230,16 +233,16 @@ getJobR = lift $ do
 
 -- | get a list of jobs in queue
 getJobQueueR :: JobHandler master Value
-getJobQueueR = lift $ do
+getJobQueueR = do
     y <- getYesod
     Right q <- liftIO $ listQueue y
     returnJson $ object ["queue" .= q]
 
 -- | enqueue new job
 postJobQueueR :: JobHandler master Value
-postJobQueueR = lift $ do
+postJobQueueR = do
     y <- getYesod
-    body <- requireJsonBody :: HandlerT master IO PostJobQueueRequest
+    body <- requireJsonBody :: JobHandler master PostJobQueueRequest
     case readJobType y (body ^. job) of
      Just jt -> do
          liftIO $ enqueue y jt
@@ -248,13 +251,13 @@ postJobQueueR = lift $ do
 
 -- | get a list of running jobs
 getJobStateR :: JobHandler master Value
-getJobStateR = lift $ do
+getJobStateR = do
     y <- getYesod
     s <- liftIO $ STM.readTVarIO (getJobState y)
     returnJson $ object ["running" .= s]
 
 getJobManagerR :: JobHandler master Html
-getJobManagerR = lift $ do
+getJobManagerR = do
     y <- getYesod
     withUrlRenderer [hamlet|
 $doctype 5
@@ -282,15 +285,16 @@ $doctype 5
 |]
 
 -- | Job manager UI (get static page. ajax application)
-getJobManagerStaticR :: Text -> JobHandler master Value
+getJobManagerStaticR :: (MonadJobHandler master m) =>
+  Text -> m Value
 getJobManagerStaticR f
-    | f == "app.js" = lift $ do
+    | f == "app.js" = do
           let content = toContent $(embedFile "app/dist/app.bundle.js")
           sendResponse ("application/json" :: ByteString, content)
     | otherwise = notFound
 
 -- | JobQueue manager subsite
-instance YesodJobQueue master => YesodSubDispatch JobQueue (HandlerT master IO) where
+instance YesodJobQueue master => YesodSubDispatch JobQueue master where
     yesodSubDispatch = $(mkYesodSubDispatch resourcesJobQueue)
 
 getJobQueue :: a -> JobQueue
