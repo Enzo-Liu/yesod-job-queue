@@ -114,7 +114,7 @@ class (Yesod master, Read (JobType master), Show (JobType master)
     threadNumber _ = 1
 
     -- | runDB for job
-    runDBJob :: (MonadBaseControl IO m, MonadIO m)
+    runDBJob :: (MonadBaseControl IO m, MonadIO m, MonadUnliftIO m)
                 => ReaderT (YesodPersistBackend master) (ReaderT master m) a
                 -> ReaderT master m a
 
