@@ -8,6 +8,7 @@ import qualified Data.Text as T (pack, Text)
 import System.Cron.Schedule
 import Yesod.JobQueue
 import Yesod.JobQueue.Types
+import qualified Database.Redis as R
 
 
 -- | Cron Scheduler for YesodJobQueue
@@ -18,7 +19,9 @@ class (YesodJobQueue master) => YesodJobQueueScheduler master where
     -- | start schedule
     startJobSchedule :: (MonadBaseControl IO m, MonadIO m) => master -> m ()
     startJobSchedule master = do
-        let add (s, jt) = addJob (enqueue master jt) s
+        let add (s, jt) = flip addJob s $ do
+              conn <- R.connect $ queueConnectInfo master
+              enqueue master jt
         tids <- liftIO $ execSchedule $ mapM_ add $ getJobSchedules master
         liftIO $ print tids
 

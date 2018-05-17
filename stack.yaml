@@ -10,6 +10,8 @@ packages:
 # Packages to be pulled from upstream that are not in the resolver (e.g., acme-missiles-0.3)
 extra-deps:
 - api-field-json-th-0.1.0.1
+- git: https://github.com/Enzo-Liu/hedis-utils.git
+  commit: 7bfdc015875b632b31b7638cb59b830781e6195c
 
 # Override default flag values for local packages and extra-deps
 flags: {}
