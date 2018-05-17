@@ -9,6 +9,10 @@ import System.Cron.Schedule
 import Yesod.JobQueue
 import Yesod.JobQueue.Types
 import qualified Database.Redis as R
+import qualified Database.Redis.Utils as R
+import qualified Data.ByteString.Char8 as B
+
+import Control.Monad(when)
 
 
 -- | Cron Scheduler for YesodJobQueue
@@ -20,8 +24,13 @@ class (YesodJobQueue master) => YesodJobQueueScheduler master where
     startJobSchedule :: (MonadBaseControl IO m, MonadIO m) => master -> m ()
     startJobSchedule master = do
         let add (s, jt) = flip addJob s $ do
+              let key = queueKey master
+                  jts = B.pack $ show jt
               conn <- R.connect $ queueConnectInfo master
-              enqueue master jt
+              locked <- R.runRedis conn $ R.acquireLock key 10 jts
+              when locked $ do
+                enqueue master jt
+                R.runRedis conn $ R.releaseLock key jts
         tids <- liftIO $ execSchedule $ mapM_ add $ getJobSchedules master
         liftIO $ print tids
 

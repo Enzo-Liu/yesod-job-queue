@@ -31,7 +31,7 @@ import Control.Concurrent.STM (TVar)
 import Control.Lens ((^.))
 import Control.Monad (forever, void)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Trans.Class (lift)
+
 import Control.Monad.Trans.Control (MonadBaseControl)
 import Control.Monad.Trans.Reader (ReaderT, runReaderT)
 import Data.Aeson ((.=), object)
